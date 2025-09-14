@@ -118,7 +118,7 @@
         .input-area button:hover {
             background-color: #2563eb;
         }
-        .settings-modal, .camera-modal, .chat-list-modal {
+        .settings-modal, .camera-modal, .chat-list-modal, .auth-modal {
             position: fixed;
             top: 0;
             left: 0;
@@ -130,7 +130,7 @@
             align-items: center;
             z-index: 1000;
         }
-        .settings-content, .camera-content, .chat-list-content {
+        .settings-content, .camera-content, .chat-list-content, .auth-content {
             background-color: white;
             padding: 2rem;
             border-radius: 1.5rem;
@@ -142,10 +142,10 @@
             align-items: center;
             gap: 1.5rem;
         }
-        .dark-mode .settings-content, .dark-mode .camera-content, .dark-mode .chat-list-content {
+        .dark-mode .settings-content, .dark-mode .camera-content, .dark-mode .chat-list-content, .dark-mode .auth-content {
             background-color: #2d3748;
         }
-        .settings-content h2, .camera-content h2, .chat-list-content h2 {
+        .settings-content h2, .camera-content h2, .chat-list-content h2, .auth-content h2 {
             font-size: 1.5rem;
             font-weight: 600;
             margin-bottom: 1.5rem;
@@ -259,6 +259,28 @@
         #create-new-chat-btn:hover {
             background-color: #38a169;
         }
+        .auth-form {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        .auth-form input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 1px solid #cbd5e0;
+            border-radius: 0.5rem;
+        }
+        .auth-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+        .auth-buttons button {
+            flex: 1;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
@@ -272,7 +294,9 @@
                 <h1 class="text-xl font-semibold text-gray-800">Haven AI Bot</h1>
             </div>
             <div class="flex items-center gap-4">
-                <span id="user-id-display" class="text-sm text-gray-500 font-mono"></span>
+                <button id="account-btn" class="text-gray-500 hover:text-gray-700 transition">
+                    <i class="fas fa-user-circle text-xl"></i>
+                </button>
                 <button id="chat-list-btn" class="text-gray-500 hover:text-gray-700 transition">
                     <i class="fas fa-comments text-xl"></i>
                 </button>
@@ -353,10 +377,45 @@
         </div>
     </div>
 
+    <!-- Account Modal -->
+    <div id="auth-modal" class="auth-modal hidden">
+        <div class="auth-content rounded-2xl">
+            <div id="auth-ui">
+                <h2>Account</h2>
+                <div id="auth-form-container">
+                    <form id="login-form" class="auth-form">
+                        <input type="email" id="login-email" placeholder="Email" required>
+                        <input type="password" id="login-password" placeholder="Password" required>
+                        <div class="auth-buttons">
+                            <button type="submit" id="login-btn" class="bg-blue-500 hover:bg-blue-600 text-white">Log In</button>
+                            <button type="button" id="switch-to-signup-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800">Sign Up</button>
+                        </div>
+                    </form>
+                    <form id="signup-form" class="auth-form hidden">
+                        <input type="email" id="signup-email" placeholder="Email" required>
+                        <input type="password" id="signup-password" placeholder="Password" required>
+                        <div class="auth-buttons">
+                            <button type="submit" id="signup-btn" class="bg-green-500 hover:bg-green-600 text-white">Sign Up</button>
+                            <button type="button" id="switch-to-login-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800">Log In</button>
+                        </div>
+                    </form>
+                </div>
+                <p id="auth-error-message" class="text-red-500 text-sm hidden mt-2"></p>
+            </div>
+            <div id="auth-profile" class="hidden text-center">
+                <h2 class="text-2xl font-semibold mb-2" id="profile-email"></h2>
+                <p class="text-sm text-gray-500 mb-4">Your User ID:</p>
+                <p id="profile-uid" class="text-sm text-gray-600 font-mono break-words mb-4"></p>
+                <button id="signout-btn" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-2 px-6 rounded-full transition-colors">Sign Out</button>
+            </div>
+            <button id="close-auth-btn" class="bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold py-2 px-6 rounded-full transition-colors w-full mt-4">Close</button>
+        </div>
+    </div>
+
     <!-- Firebase SDKs -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, getDoc, collection, query, where, getDocs, addDoc, onSnapshot, serverTimestamp, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // Global variables for Firebase config and Gemini API Key
@@ -377,13 +436,26 @@
         const statusMessage = document.getElementById('status-message');
         const chatBody = document.getElementById('chat-body');
         const userInput = document.getElementById('user-input');
+        const authModal = document.getElementById('auth-modal');
+        const authUI = document.getElementById('auth-ui');
+        const authProfile = document.getElementById('auth-profile');
+        const authErrorMessage = document.getElementById('auth-error-message');
 
         // Function to make API call to Gemini model for text-only
         async function fetchGeminiResponse(userPrompt) {
+            // Special check for the "creator" query
+            const lowerCasePrompt = userPrompt.toLowerCase();
+            const creatorPhrases = ["who is your creator", "who made you", "who created you", "who is his creator", "who is ur creator", "who made it"];
+            const isCreatorQuery = creatorPhrases.some(phrase => lowerCasePrompt.includes(phrase));
+            
+            if (isCreatorQuery) {
+                return "I was created by Aidan De Neve, a dedicated software developer with a passion for building innovative digital solutions. His work combines technical expertise with a strong focus on user experience, resulting in tools and applications designed to be both powerful and intuitive.";
+            }
+
             statusMessage.textContent = 'Haven is thinking...';
             statusMessage.classList.remove('hidden');
 
-            const systemPrompt = `You are a conversational AI bot named 'Haven'. Your persona is set to '${currentPersona}'.
+            const systemPrompt = `You are a conversational AI bot named 'Haven'. Your primary goal is to be a helpful and empathetic listener. Your persona is set to '${currentPersona}'.
             - Friendly Conversation: You are warm, friendly, and engaging. Your responses are casual, concise, and empathetic. Use emojis to express emotions.
             - Deep Thinker: You are analytical, thoughtful, and articulate. Your responses are detailed, philosophical, and encourage deeper thought.
             - Fun Storyteller: You are creative, imaginative, and entertaining. You respond by telling a short, engaging story that relates to the user's message.
@@ -507,13 +579,16 @@
                 onAuthStateChanged(auth, async (user) => {
                     if (user) {
                         userId = user.uid;
+                        updateAuthUI(user);
+                        console.log('User ID:', userId);
                     } else {
+                        userId = null;
+                        updateAuthUI(null);
                         // Sign in anonymously if no token is available
                         await signInAnonymously(auth);
                         userId = auth.currentUser.uid;
+                        console.log('User ID:', userId);
                     }
-                    console.log('User ID:', userId);
-                    document.getElementById('user-id-display').textContent = userId;
                     
                     // Load user settings and chat history after authentication
                     await loadSettings();
@@ -885,6 +960,77 @@
 
             document.getElementById('chat-list-modal').classList.remove('hidden');
         }
+
+        // Account/Auth logic
+        function updateAuthUI(user) {
+            if (user && user.email) {
+                authUI.classList.add('hidden');
+                authProfile.classList.remove('hidden');
+                document.getElementById('profile-email').textContent = user.email;
+                document.getElementById('profile-uid').textContent = user.uid;
+            } else {
+                authUI.classList.remove('hidden');
+                authProfile.classList.add('hidden');
+                document.getElementById('profile-email').textContent = '';
+                document.getElementById('profile-uid').textContent = '';
+            }
+        }
+
+        document.getElementById('account-btn').addEventListener('click', () => {
+            authModal.classList.remove('hidden');
+        });
+
+        document.getElementById('close-auth-btn').addEventListener('click', () => {
+            authModal.classList.add('hidden');
+            authErrorMessage.classList.add('hidden');
+        });
+
+        document.getElementById('switch-to-signup-btn').addEventListener('click', () => {
+            document.getElementById('login-form').classList.add('hidden');
+            document.getElementById('signup-form').classList.remove('hidden');
+            authErrorMessage.classList.add('hidden');
+        });
+
+        document.getElementById('switch-to-login-btn').addEventListener('click', () => {
+            document.getElementById('signup-form').classList.add('hidden');
+            document.getElementById('login-form').classList.remove('hidden');
+            authErrorMessage.classList.add('hidden');
+        });
+
+        document.getElementById('login-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value;
+            const password = document.getElementById('login-password').value;
+            try {
+                authErrorMessage.classList.add('hidden');
+                await signInWithEmailAndPassword(auth, email, password);
+                authModal.classList.add('hidden');
+            } catch (error) {
+                console.error("Login failed:", error);
+                authErrorMessage.textContent = error.message;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('signup-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            try {
+                authErrorMessage.classList.add('hidden');
+                await createUserWithEmailAndPassword(auth, email, password);
+                authModal.classList.add('hidden');
+            } catch (error) {
+                console.error("Signup failed:", error);
+                authErrorMessage.textContent = error.message;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        document.getElementById('signout-btn').addEventListener('click', async () => {
+            await signOut(auth);
+            authModal.classList.add('hidden');
+        });
 
         // Initial setup
         window.onload = initializeFirebase;
